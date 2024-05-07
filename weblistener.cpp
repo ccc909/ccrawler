@@ -1,66 +1,82 @@
-/* We simply call the root header file "App.h", giving you uWS::App and uWS::SSLApp */
-#include "App.h"
+#include <ixwebsocket/IXWebSocketServer.h>
+#include <iostream>
+#include "main.cpp" 
 
-/* This is a simple WebSocket echo server example.
- * You may compile it with "WITH_OPENSSL=1 make" or with "make" */
+int main(){
+ix::initNetSystem();
+// Run a server on localhost at a given port.
+// Bound host name, max connections and listen backlog can also be passed in as parameters.
+int port = 8008;
+std::string host("127.0.0.1"); // If you need this server to be accessible on a different machine, use "0.0.0.0"
+ix::WebSocketServer server(port, host);
+Crawler *crawler;
 
-using json = nlohmann::json;
+server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket& webSocket, const ix::WebSocketMessagePtr& msg) {
+    // The ConnectionState object contains information about the connection,
+    // at this point only the client ip address and the port.
+    std::cout << "Remote ip: " << connectionState->getRemoteIp() << std::endl;
+    
 
-int main() {
-    /* ws->getUserData returns one of these */
-    struct PerSocketData {
-        /* Fill with user data */
-    };
+    if (msg->type == ix::WebSocketMessageType::Open)
+    {
+        
+        crawler = new Crawler(&webSocket);
+        
+        std::cout << "New connection" << std::endl;
 
-    /* Keep in mind that uWS::SSLApp({options}) is the same as uWS::App() when compiled without SSL support.
-     * You may swap to using uWS:App() if you don't need SSL */
-    uWS::App({
-        /* There are example certificates in uWebSockets.js repo */
-        .key_file_name = "misc/key.pem",
-        .cert_file_name = "misc/cert.pem",
-        .passphrase = "1234"
-        }).ws<PerSocketData>("/*", {
-            /* Settings */
-            .compression = uWS::CompressOptions(uWS::DEDICATED_COMPRESSOR_4KB | uWS::DEDICATED_DECOMPRESSOR),
-            .maxPayloadLength = 100 * 1024 * 1024,
-            .idleTimeout = 16,
-            .maxBackpressure = 100 * 1024 * 1024,
-            .closeOnBackpressureLimit = false,
-            .resetIdleTimeoutOnSend = false,
-            .sendPingsAutomatically = true,
-            /* Handlers */
-            .upgrade = nullptr,
-            .open = [](auto*/*ws*/) {
-                /* Open event here, you may access ws->getUserData() which points to a PerSocketData struct */
+        // A connection state object is available, and has a default id
+        // You can subclass ConnectionState and pass an alternate factory
+        // to override it. It is useful if you want to store custom
+        // attributes per connection (authenticated bool flag, attributes, etc...)
+        std::cout << "id: " << connectionState->getId() << std::endl;
 
-            },
-            .message = [](auto* ws, std::string_view message, uWS::OpCode opCode) {
-                /* This is the opposite of what you probably want; compress if message is LARGER than 16 kb
-                 * the reason we do the opposite here; compress if SMALLER than 16 kb is to allow for
-                 * benchmarking of large message sending without compression */
-                
-                
+        // The uri the client did connect to.
+        std::cout << "Uri: " << msg->openInfo.uri << std::endl;
 
-                ws->send(message, opCode, message.length() < 16 * 1024);
-            },
-            .dropped = [](auto*/*ws*/, std::string_view /*message*/, uWS::OpCode /*opCode*/) {
-                /* A message was dropped due to set maxBackpressure and closeOnBackpressureLimit limit */
-            },
-            .drain = [](auto*/*ws*/) {
-                /* Check ws->getBufferedAmount() here */
-            },
-            .ping = [](auto*/*ws*/, std::string_view) {
-                /* Not implemented yet */
-            },
-            .pong = [](auto*/*ws*/, std::string_view) {
-                /* Not implemented yet */
-            },
-            .close = [](auto*/*ws*/, int /*code*/, std::string_view /*message*/) {
-                /* You may access ws->getUserData() here */
-            }
-            }).listen(9001, [](auto* listen_socket) {
-                if (listen_socket) {
-                    std::cout << "Listening on port " << 9001 << std::endl;
-                }
-                }).run();
+        std::cout << "Headers:" << std::endl;
+        for (auto it : msg->openInfo.headers)
+        {
+            std::cout << "\t" << it.first << ": " << it.second << std::endl;
+        }
+    }
+    else if (msg->type == ix::WebSocketMessageType::Message)
+    {
+        // For an echo server, we just send back to the client whatever was received by the server
+        // All connected clients are available in an std::set. See the broadcast cpp example.
+        // Second parameter tells whether we are sending the message in binary or text mode.
+        // Here we send it in the same mode as it was received.
+        
+        std::cout << "Received: " << msg->str << std::endl;
+
+
+
+        std::cout << "Received: " << msg->str << std::endl;
+
+        crawler->crawl(Link(msg->str));
+
+ /*           webSocket.send(msg->str, msg->binary);*/
+    }
+});
+
+
+
+auto res = server.listen();
+if (!res.first)
+{
+    // Print out the error message
+    std::cerr << "Error occurred while listening: " << res.second << std::endl;
+    return 1;
+}
+
+// Per message deflate connection is enabled by default. It can be disabled
+// which might be helpful when running on low power devices such as a Raspbery Pi
+//server.disablePerMessageDeflate();
+
+// Run the server in the background. Server can be stoped by calling server.stop()
+server.start();
+
+// Block until server.stop() is called.
+server.wait();
+
+
 }

@@ -11,15 +11,18 @@
 #include <fstream>
 #include "robotstxt.cpp"
 #include <ixwebsocket/IXWebSocketServer.h>
+#include <nlohmann/json.hpp>
 
+using json = nlohmann::json;
 
+//support link class to get link components
 
 class Link {
 public:
     Link(const std::string& fullLink) : fullLink(fullLink) {
         extractComponents(fullLink);
     }
-
+    //getters
     std::string getDomain() const {
         return domain;
     }
@@ -37,6 +40,7 @@ private:
     std::string fullLink;
     std::string relativePath;
 
+    //setter, works only for lniks that have a protocol for now
     void extractComponents(const std::string& url) {
         size_t start = url.find("://");
         if (start == std::string::npos)
@@ -45,7 +49,7 @@ private:
         size_t end = url.find_first_of("/?", start);
         domain = url.substr(start, end - start);
 
-        // Remove subdomains from the domain
+        //remove subdomain
         size_t pos = domain.rfind('.');
         if (pos != std::string::npos) {
             size_t pos2 = domain.rfind('.', pos - 1);
@@ -59,28 +63,33 @@ private:
         }
     }
 };
-//probably shouldnt be named domain
+
+
 class Domain {
 public:
     Domain(const Link& startLink, int crawlDelay = 0) : m_link(startLink), m_crawlDelay(crawlDelay) {
         m_bfsQueue.push({ startLink, 0 });
+        //try to fetch robots.txt
         cpr::Response response = cpr::Get(cpr::Url(startLink.getDomain() + "/robots.txt"));
         std::cout << startLink.getDomain() + "/robots.txt" << std::endl;
         if (response.status_code == 200) {
             std::cout << "Successfully fetched robots.txt for domain: " << startLink.getDomain() << std::endl;
+            //store a robots parser object
             m_parser = std::make_unique<robots::Parser>(response.text, startLink.getDomain());
         }
         else {
+            //should be handled by the crawler
             std::cerr << "Failed to fetch robots.txt for domain: " << startLink.getDomain() << std::endl;
         }
     }
 
-
+    //
 
     bool hasLinks() const {
         return !m_bfsQueue.empty();
     }
 
+    //get next link in queue
     std::pair<Link, int> getNextLink() {
         std::lock_guard<std::mutex> lock(m_mutex);
         auto link = m_bfsQueue.front();
@@ -88,11 +97,13 @@ public:
         return link;
     }
 
+    // add link to queue
     void addLink(const Link& link, int depth) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bfsQueue.push({ link, depth });
     }
 
+    //get crawl delay for parser, should change this to a field
     int getCrawlDelay() {
         if (m_parser) {
             int delay = m_parser->getDelay();
@@ -102,6 +113,7 @@ public:
         return m_crawlDelay;
     }
 
+    // check if a link can be crawler according to robots.txt
     bool canCrawl(const Link& link) {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_parser) {
@@ -115,30 +127,31 @@ public:
         return true;
     }
 
+
+    //unused
     std::string serialize() {
         std::lock_guard<std::mutex> lock(m_mutex);
         std::ostringstream oss;
 
-        // Serialize link
         oss << m_link.getFullLink() << "\n";
 
-        // Serialize BFS queue
         oss << m_bfsQueue.size() << "\n";
         while (!m_bfsQueue.empty()) {
             oss << m_bfsQueue.front().first.getFullLink() << " " << m_bfsQueue.front().second << "\n";
             m_bfsQueue.pop();
         }
-
-        // Serialize crawl delay
         oss << m_crawlDelay << "\n";
 
-        // Serialize whether parser exists
         oss << (m_parser ? "true" : "false") << "\n";
 
         return oss.str();
     }
 
-private: // Callback function to send back links to WebSocket client
+    Link getLink() {
+        return m_link;
+    }
+
+private:
     Link m_link;
     std::queue<std::pair<Link, int>> m_bfsQueue;
     std::mutex m_mutex;
@@ -146,8 +159,8 @@ private: // Callback function to send back links to WebSocket client
     std::unique_ptr<robots::Parser> m_parser;
 };
 
-
-class ThreadPool { //not my implementation
+//thread pool to ensure efficient parallel crawling
+class ThreadPool {
 public:
     ThreadPool(size_t numThreads) : stop(false) {
         for (size_t i = 0; i < numThreads; ++i)
@@ -188,59 +201,90 @@ public:
             worker.join();
     }
 
-private:
-    std::vector<std::thread> workers;
-    std::queue<std::function<void()>> tasks;
-    std::mutex queueMutex;
     std::condition_variable condition;
     bool stop;
+    std::vector<std::thread> workers;
+	std::queue<std::function<void()>> tasks;
+	std::mutex queueMutex;
+private:
+    
 };
 
+//main crawler class
 class Crawler {
 public:
+    //init crawler with websocket and thread pool
     Crawler(ix::WebSocket* webSocket) : m_pool(std::thread::hardware_concurrency()), m_webSocket(webSocket) {
     }
-    // Pass callback function to the constructor // Create a thread pool with the number of hardware threads
+    
+    std::unordered_map<std::string, Domain*> m_visitedDomains;
 
+
+    //crawl function, should be called by the websocket
     void crawl(const Link& startLink) {
+        Domain* domain;
 
-        Domain domain(startLink);
+        //try to find a previously created domain, also should help to avoid double crawl??
+        auto it = m_visitedDomains.find(startLink.getDomain());
+        if (it != m_visitedDomains.end()) { 
+            domain = it->second;
+        }
+        else {
+            domain = new Domain(startLink);
+            m_visitedDomains[startLink.getDomain()] = domain;
+        }
 
-        while (domain.hasLinks()) {
-            auto [link, depth] = domain.getNextLink();
+        
+        //this might not work as expected
+        while (domain->hasLinks() && !m_shouldStop) {
+            //get next link
+            auto [link, depth] = domain->getNextLink();
 
             std::string domainName = link.getDomain();
             std::lock_guard<std::mutex> lock(m_mutexes[domainName]); // Lock access to the queue for this domain
 
             std::string fullLink = link.getFullLink();
 
-            if (m_visitedUrls.count(fullLink) || depth >= 10) {
-                // Skip if URL has already been visited or depth limit reached
+            if (m_visitedUrls.count(fullLink)!=0 || depth >= 10) {
+                //skip if URL has already been visited or depth limit reached
                 continue;
             }
 
+            //insert visited link
             m_visitedUrls.insert(fullLink);
 
             cpr::Response response = cpr::Get(cpr::Url{ fullLink });
-
+           
             if (response.status_code == 200) {
                 std::cout << "Successfully crawled: " << fullLink << std::endl;
 
-                // Extract URLs using regex
+                // extract URLs using regex
                 std::set<std::string> links = extractUrls(response.text, fullLink);
 
-                // Add child URLs to the BFS queue
+                // add child URLs to the BFS queue
                 for (const auto& childLink : links) {
                     Link child(childLink);
                     std::cout << childLink << std::endl;
-                    if (domain.canCrawl(child)) {
+                    if (domain->canCrawl(child)) {
+                        //should immediatelly return if same domain is visited??? maybe add another check , it doesnt stop
                         if (child.getDomain() != domainName) {
-                            // Submit crawling task to the thread pool for URLs from a new domain
+                            // submit crawling task to the thread pool for URLs from a new domain
                             m_pool.enqueue([this, child] { crawl(child); });
                         }
                         else {
-                            domain.addLink(child, depth + 1);
-                            m_webSocket->sendText("Crawled: " + childLink);
+                         
+							json jsonData;
+							jsonData["messageType"] = "Crawled";
+							jsonData["childLink"] = childLink;
+
+							// Convert JSON object to string
+							std::string jsonStr = jsonData.dump();
+
+                            domain->addLink(child, depth + 1);
+                            //cheap fix for now but works, cralwer still might be doing double work in background but frontend receives correct data
+                            if(testset.count(childLink) == 0)
+                                m_webSocket->sendText(jsonStr);
+                            testset.insert(childLink);
                         }
                     }
                 }
@@ -250,11 +294,17 @@ public:
                 std::cerr << "Status code: " << response.status_code << std::endl;
             }
 
-            // Delay before crawling next URL for this domain
-            std::this_thread::sleep_for(std::chrono::milliseconds(domain.getCrawlDelay()));
+            //delay crwaling per domain
+            std::this_thread::sleep_for(std::chrono::milliseconds(domain->getCrawlDelay()));
         }
     }
 
+    void queueFromWebsocket(const std::string& url) {
+		Link link(url);
+        m_pool.enqueue([this, link] { crawl(link); });
+	}   
+
+    //unused
     void saveState(const std::string& filename) {
         std::ofstream file(filename);
         if (file.is_open()) {
@@ -267,6 +317,7 @@ public:
         }
     }
 
+    //unused
     void resumeState(const std::string& filename) {
         std::ifstream file(filename);
         if (file.is_open()) {
@@ -281,11 +332,33 @@ public:
         }
     }
 
+  
+	void stop() {
+		m_shouldStop = true; // et the flag to indicate that the crawler should stop
+
+		m_pool.stop = true; // set the pools stop flag
+
+		m_pool.condition.notify_all(); //notify all worker threads
+
+		//wait for the task queue to become empty
+		std::unique_lock<std::mutex> lock(m_pool.queueMutex);
+		m_pool.condition.wait(lock, [&] { return m_pool.tasks.empty(); });
+
+		//join all worker threads
+		for (std::thread& worker : m_pool.workers)
+			worker.join();
+
+		m_visitedDomains.clear();
+		m_visitedUrls.clear();
+	}
+
 private:
+    //always true for now, wanted to use to limit crawler to only domains, but not needed anymore
     bool should_crawl(const std::string& link) {
-        return true; // You can implement custom logic for deciding whether to crawl a link
+        return true;
     }
 
+    //extract urls from html 
     std::set<std::string> extractUrls(const std::string& html, const std::string& baseUrl) {
         std::set<std::string> links;
         std::regex linkRegex("<a\\s+(?:[^>]*?\\s+)?href=([\"'])(.*?)\\1", std::regex::icase);
@@ -297,7 +370,7 @@ private:
             if (!link.empty() && link[0] != '#') {
                 if (link.find("http") != 0) {
                     if (!baseUrl.empty() && baseUrl.back() == '/')
-                        link = baseUrl.substr(0, baseUrl.length() - 1) + link; // Remove trailing slash from baseUrl
+                        link = baseUrl.substr(0, baseUrl.length() - 1) + link;
                     else
                         link = baseUrl + link;
                 }
@@ -310,6 +383,7 @@ private:
         return links;
     }
 
+    //unused
     std::string serializeState() {
         std::ostringstream oss;
 
@@ -322,6 +396,7 @@ private:
         return oss.str();
     }
 
+    //unused
     void deserializeState(const std::string& state) {
         std::istringstream iss(state);
 
@@ -339,31 +414,8 @@ private:
     std::mutex m_callbackMutex;
     std::map<std::string, std::mutex> m_mutexes; // Mutexes for each domain to synchronize access to queues
     std::unordered_set<std::string> m_visitedUrls;
+    std::unordered_set<std::string> testset;
     ThreadPool m_pool;
     ix::WebSocket *m_webSocket;
+    bool m_shouldStop = false;
 };
-
-//int main(int argc, char** argv) {
-//    Crawler crawler;
-//    std::string url = "example.com"; // Change this to the URL you want to start crawling
-//
-//    // Check if there is a command line argument for resuming state
-//    if (argc > 1) {
-//        std::string arg = argv[1];
-//        if (arg == "-resume" && argc > 2) {
-//            std::string filename = argv[2];
-//            crawler.resumeState(filename);
-//        }
-//    }
-//    else {
-//        crawler.crawl(Link(url));
-//    }
-//    
-//
-//
-//    // Save state before exiting
-//    crawler.saveState("crawler_state.txt");
-//
-//    std::this_thread::sleep_for(std::chrono::minutes(10)); // Wait for 10 minutes
-//    return 0;
-//}

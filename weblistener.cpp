@@ -4,16 +4,12 @@
 
 int main(){
 ix::initNetSystem();
-// Run a server on localhost at a given port.
-// Bound host name, max connections and listen backlog can also be passed in as parameters.
-int port = 8008;
-std::string host("127.0.0.1"); // If you need this server to be accessible on a different machine, use "0.0.0.0"
+int port = 9001;
+std::string host("127.0.0.1");
 ix::WebSocketServer server(port, host);
 Crawler *crawler;
 
 server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket& webSocket, const ix::WebSocketMessagePtr& msg) {
-    // The ConnectionState object contains information about the connection,
-    // at this point only the client ip address and the port.
     std::cout << "Remote ip: " << connectionState->getRemoteIp() << std::endl;
     
 
@@ -24,10 +20,6 @@ server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> conne
         
         std::cout << "New connection" << std::endl;
 
-        // A connection state object is available, and has a default id
-        // You can subclass ConnectionState and pass an alternate factory
-        // to override it. It is useful if you want to store custom
-        // attributes per connection (authenticated bool flag, attributes, etc...)
         std::cout << "id: " << connectionState->getId() << std::endl;
 
         // The uri the client did connect to.
@@ -39,23 +31,24 @@ server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> conne
             std::cout << "\t" << it.first << ": " << it.second << std::endl;
         }
     }
-    else if (msg->type == ix::WebSocketMessageType::Message)
-    {
-        // For an echo server, we just send back to the client whatever was received by the server
-        // All connected clients are available in an std::set. See the broadcast cpp example.
-        // Second parameter tells whether we are sending the message in binary or text mode.
-        // Here we send it in the same mode as it was received.
-        
-        std::cout << "Received: " << msg->str << std::endl;
+	else if (msg->type == ix::WebSocketMessageType::Message)
+	{
+        std::string message = msg->str;
 
+		if (!message.empty() && message.front() == '"' && message.back() == '"') {
+			message = message.substr(1, message.size() - 2);
+		}
 
+		std::cout << "Received: " << msg->str << std::endl;
 
-        std::cout << "Received: " << msg->str << std::endl;
+		if (msg->str == "stop")
+		{
+			crawler->stop();
+		}
 
-        crawler->crawl(Link(msg->str));
+        crawler->queueFromWebsocket(message);
 
- /*           webSocket.send(msg->str, msg->binary);*/
-    }
+	}
 });
 
 
@@ -63,19 +56,12 @@ server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> conne
 auto res = server.listen();
 if (!res.first)
 {
-    // Print out the error message
     std::cerr << "Error occurred while listening: " << res.second << std::endl;
     return 1;
 }
 
-// Per message deflate connection is enabled by default. It can be disabled
-// which might be helpful when running on low power devices such as a Raspbery Pi
-//server.disablePerMessageDeflate();
-
-// Run the server in the background. Server can be stoped by calling server.stop()
 server.start();
 
-// Block until server.stop() is called.
 server.wait();
 
 

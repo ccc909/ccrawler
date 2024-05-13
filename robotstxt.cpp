@@ -10,138 +10,143 @@
 typedef std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::regex>>> directiveStore;
 typedef std::pair<std::string, std::string> stringPair;
 
-constexpr std::string_view DISALLOW = "disallow";
-constexpr std::string_view ALLOW = "allow";
-constexpr std::string_view SITEMAP = "sitemap";
-constexpr std::string_view USERAGENT = "user-agent";
-constexpr std::string_view CRAWLDELAY = "crawl-delay";
+//globals
+constexpr const char* DISALLOW = "disallow";
+constexpr const char* ALLOW = "allow";
+constexpr const char* SITEMAP = "sitemap";
+constexpr const char* USERAGENT = "user-agent";
+constexpr const char* CRAWLDELAY = "crawl-delay";
 constexpr char DELIMITER = ':';
-constexpr std::string_view DESIRED_USERAGENT = "*";
+constexpr const char* DESIRED_USERAGENT = "*";
 
 namespace robots {
-    class Parser {
-    public:
-        Parser(const std::string& robotsTxtContent, const std::string& domain) : domain(domain) {
-            uaDirectiveMap["*"][std::string(DISALLOW)] = {};
-            uaDirectiveMap["*"][std::string(ALLOW)] = {};
-            tokenizeInput(robotsTxtContent);
-        }
+	class Parser {
+	public:
+		Parser(const std::string& robotsTxtContent, const std::string& domain) : domain(domain) {
+			//initialize map
+			uaDirectiveMap["*"][DISALLOW] = {};
+			uaDirectiveMap["*"][ALLOW] = {};
+			tokenizeInput(robotsTxtContent);
+		}
 
-        directiveStore getDirectiveMap() const {
-            return uaDirectiveMap;
-        }
+		directiveStore getDirectiveMap() const {
+			return uaDirectiveMap;
+		}
 
-        bool checkUrl(const std::string& path) const {
-            bool explicitlyDisallow = false;
-            for (const std::regex& matcher : uaDirectiveMap.at(std::string(DESIRED_USERAGENT)).at(std::string(DISALLOW))) {
-                if (std::regex_search(path, matcher)) {
-                    explicitlyDisallow = true;
-                    break;
-                }
-            }
+		bool checkUrl(const std::string& path) const {
+			bool explicitlyDisallow = false;
+			//first check disallow rules, since they can be overwritten by allow rules
+			for (const std::regex& matcher : uaDirectiveMap.at(DESIRED_USERAGENT).at(DISALLOW)) {
+				if (std::regex_search(path, matcher)) {
+					explicitlyDisallow = true;
+					break;
+				}
+			}
 
-            if (!explicitlyDisallow) {
-                return true;
-            }
+			//if no disallow rules are matched, check allow rules
+			if (!explicitlyDisallow) {
+				return true;
+			}
 
-            for (const std::regex matcher : uaDirectiveMap.at(std::string(DESIRED_USERAGENT)).at(std::string(ALLOW))) {
-                if (std::regex_search(path, matcher)) {
-                    return true;
-                }
-            }
+			//check allow rules
+			for (const std::regex& matcher : uaDirectiveMap.at(DESIRED_USERAGENT).at(ALLOW)) {
+				if (std::regex_search(path, matcher)) {
+					return true;
+				}
+			}
 
-            return false;
-        }
+		//else disallowed
+			return false;
+		}
 
-        int getDelay() {
-            return crawlDelay;
-        }
+		int getDelay() const {
+			return crawlDelay;
+		}
 
-    private:
+	private:
 
-        int crawlDelay = 0;
+		int crawlDelay = 0;
 
-        bool isValidAscii(const std::string& str) const{
-            return std::all_of(str.begin(), str.end(), [](char c) { return c <= 127; });
-        }
+		//ensure only ascii lines are parsed
+		bool isValidAscii(const std::string& str) const {
+			return std::all_of(str.begin(), str.end(), [](char c) { return c <= 127 && c >= 0; });
+		}
 
+		void tokenizeInput(std::string robotsTxtContent) {
+			std::istringstream iss(std::move(robotsTxtContent));
+			std::string currentAgent = "*";
 
-        void tokenizeInput(std::string robotsTxtContent) {
-            std::istringstream iss(std::move(robotsTxtContent));
-            std::string currentAgent = "*";
+			for (std::string line; std::getline(iss, line);) {
+				// remove whitespace
 
-            for (std::string line; std::getline(iss, line);) {
-                 // Remove whitespace
+				if (line.empty() || line[0] == '#' || !isValidAscii(line)) {
+					continue; // sip empty, comment, or non-ASCII lines
+				}
 
-                if (line.empty() || line[0] == '#' || !isValidAscii(line)) {
-                    continue; // Skip empty, comment, or non-ASCII lines
-                }
+				line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
 
-                line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+				auto [key, val] = splitString(line, DELIMITER);
 
-                auto [key, val] = splitString(line, DELIMITER);
+				if (val.empty())
+					continue;
 
-                if (val.empty())
-                    continue;
+				std::transform(key.begin(), key.end(), key.begin(), ::tolower); // Hopefully all utf8 are gone or it will break later on
 
-                std::transform(key.begin(), key.end(), key.begin(), ::tolower); // Hopefully all utf8 are gone or i will break later on
+				if (key == USERAGENT) {
+					//set user agent
+					currentAgent = val;
+				}
+				else if (key == DISALLOW || key == ALLOW) {
+					//store disallow/allow rules
+					uaDirectiveMap[currentAgent][key].push_back(std::regex(generateRegex(val))); // Store regex for each path
+				}
+				else if (key == CRAWLDELAY) {
+					//store crawl delay
+					crawlDelay = std::stoi(val);
+				}
+				else {
+					std::cerr << "Malformed key: " << key << std::endl;
+				}
+			}
+		}
 
-                if (key == USERAGENT) {
-                    currentAgent = val;
-                }
-                else if (key == DISALLOW || key == ALLOW) {
-                    uaDirectiveMap[currentAgent][key].push_back(std::regex(generateRegex(val))); // Store regex for each path
-                }
-                else if (key == CRAWLDELAY) {
-                    crawlDelay = std::stoi(val);
-                }
-                else {
-                    std::cerr << "Malformed key: " << key << std::endl;
-                }
-            }
-        }
+		stringPair splitString(const std::string& str, char delimiter) const {
+			size_t pos = str.find(delimiter);
+			if (pos != std::string::npos) {
+				return { str.substr(0, pos), str.substr(pos + 1) };
+			}
+			else {
+				return { str, "" };
+			}
+		}
 
-        stringPair splitString(const std::string& str, char delimiter) const {
-            size_t pos = str.find(delimiter);
-            if (pos != std::string::npos) {
-                return { str.substr(0, pos), str.substr(pos + 1) };
-            }
-            else {
-                return { str, "" };
-            }
-        }
+		//this seems to work, but I'm not sure if it's the best way to do it
+		std::string generateRegex(const std::string& value) const {
+			std::ostringstream regexPattern;
+			bool endWildcard = false;
 
+			for (char c : value) {
+				if (c == '*') {
+					endWildcard = true;
+					regexPattern << ".*";
+				}
+				else if (c == '$') {
+					break;
+				}
+				else {
+					regexPattern << c;
+				}
+			}
 
-        std::string generateRegex(const std::string& value) const {
-            std::ostringstream regexPattern;
-            bool endWildcard = false;
+			if (!endWildcard) {
+				regexPattern << ".*";
+			}
 
-            for (char c : value) {
-                if (c == '*') {
-                    endWildcard = true;
-                    regexPattern << ".*";
-                }
-                else if (c == '$') {
-                    break;
-                }
-                else {
-                    regexPattern << c;
-                }
-            }
+			std::cout << regexPattern.str() << std::endl;
+			return regexPattern.str();
+		}
 
-            if (!endWildcard) {
-                regexPattern << ".*";
-            }
-
-
-            std::cout << regexPattern.str() << std::endl;
-            return regexPattern.str();
-        }
-
-
-        directiveStore uaDirectiveMap;
-        std::string domain;
-    };
+		directiveStore uaDirectiveMap;
+		std::string domain;
+	};
 }
-
-

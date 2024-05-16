@@ -44,10 +44,24 @@ server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> conne
 		if (msg->str == "stop")
 		{
 			crawler->stop();
+            delete crawler;
+            crawler = nullptr;
+            crawler = new Crawler(&webSocket);
 		}
-
-        crawler->queueFromWebsocket(message);
-
+        else {
+            crawler->queueFromWebsocket(message);
+        }
+	}
+    else if (msg->type == ix::WebSocketMessageType::Close)
+    {
+		std::cout << "Closed connection" << std::endl;
+		crawler->stop();
+		delete crawler;
+        crawler = nullptr;
+	}
+    else if (msg->type == ix::WebSocketMessageType::Error)
+    {
+		std::cout << "Error: " << msg->errorInfo.reason << std::endl;
 	}
 });
 

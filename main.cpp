@@ -237,6 +237,10 @@ public:
         
         //this might not work as expected
         while (domain->hasLinks() && !m_shouldStop) {
+            if (m_shouldStop) {
+                break; // Exit the loop
+            }
+
             //get next link
             auto [link, depth] = domain->getNextLink();
 
@@ -333,24 +337,20 @@ public:
     }
 
   
-	void stop() {
-		m_shouldStop = true; // et the flag to indicate that the crawler should stop
+    void stop() {
+        {
+            std::unique_lock<std::mutex> lock(m_pool.queueMutex);
+            m_shouldStop = true; // Set the flag to indicate that the crawler should stop
+            m_pool.stop = true; // Set the pool's stop flag
+        }
+       
 
-		m_pool.stop = true; // set the pools stop flag
+        m_visitedDomains.clear();
+        m_visitedUrls.clear();
+        testset.clear();
+    }
 
-		m_pool.condition.notify_all(); //notify all worker threads
 
-		//wait for the task queue to become empty
-		std::unique_lock<std::mutex> lock(m_pool.queueMutex);
-		m_pool.condition.wait(lock, [&] { return m_pool.tasks.empty(); });
-
-		//join all worker threads
-		for (std::thread& worker : m_pool.workers)
-			worker.join();
-
-		m_visitedDomains.clear();
-		m_visitedUrls.clear();
-	}
 
 private:
     //always true for now, wanted to use to limit crawler to only domains, but not needed anymore

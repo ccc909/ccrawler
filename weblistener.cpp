@@ -2,12 +2,15 @@
 #include <iostream>
 #include "main.cpp" 
 
+using json = nlohmann::json;
+
 int main(){
 ix::initNetSystem();
 int port = 9001;
 std::string host("127.0.0.1");
-ix::WebSocketServer server(port, host);
+ix::WebSocketServer server(port, host, ix::SocketServer::kDefaultTcpBacklog, 1);
 Crawler *crawler;
+bool isStarted = false;
 
 server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> connectionState, ix::WebSocket& webSocket, const ix::WebSocketMessagePtr& msg) {
     std::cout << "Remote ip: " << connectionState->getRemoteIp() << std::endl;
@@ -33,24 +36,79 @@ server.setOnClientMessageCallback([&](std::shared_ptr<ix::ConnectionState> conne
     }
 	else if (msg->type == ix::WebSocketMessageType::Message)
 	{
+        std::cout << "Received: " << msg->str << std::endl;
+
         std::string message = msg->str;
 
 		if (!message.empty() && message.front() == '"' && message.back() == '"') {
 			message = message.substr(1, message.size() - 2);
 		}
 
-		std::cout << "Received: " << msg->str << std::endl;
+        json jsonMsg;
 
-		if (msg->str == "stop")
+        try
+        {
+            jsonMsg = json::parse(message);
+        }
+        catch (json::parse_error& ex)
+        {
+            json parseException;
+            parseException["error"] = "parse_error";
+            std::cout<<"Error parsing json: " << ex.what() << std::endl;
+            webSocket.sendText(parseException.dump());
+            return;
+        }
+
+        if (jsonMsg["action"] == "start") {
+            isStarted = true;
+            bool domainsOnly = false;
+            bool ignoreRobots = false;
+
+            if (jsonMsg.contains("params")) {
+				for (auto& [key, value] : jsonMsg["params"].items()) {
+					if (key == "domainsOnly") {
+						domainsOnly = value;
+					}
+					else if (key == "ignoreRobots") {
+						ignoreRobots = value;
+					}
+				}
+			}
+
+            std::string domain = jsonMsg["domain"];
+
+            crawler->setParams(ignoreRobots, domainsOnly);
+
+            crawler->queueFromWebsocket(domain);
+        }
+        else if (jsonMsg["action"] == "stop") {
+            if (!isStarted) {
+                return;
+            }
+                
+            
+			json stopstatus;
+			stopstatus["action"] = "stop_start";
+            webSocket.sendText(stopstatus.dump());
+			crawler->stop();
+            stopstatus["action"] = "stop_end";
+            webSocket.sendText(stopstatus.dump());
+			delete crawler;
+			crawler = nullptr;
+			crawler = new Crawler(&webSocket);
+            isStarted = false;
+		}
+
+		/*if (msg->str == "stop")
 		{
 			crawler->stop();
-            delete crawler;
-            crawler = nullptr;
-            crawler = new Crawler(&webSocket);
+			delete crawler;
+			crawler = nullptr;
+			crawler = new Crawler(&webSocket);
 		}
-        else {
-            crawler->queueFromWebsocket(message);
-        }
+		else {
+			crawler->queueFromWebsocket(message);
+		}*/
 	}
     else if (msg->type == ix::WebSocketMessageType::Close)
     {

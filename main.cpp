@@ -235,11 +235,11 @@ public:
         }
 
         
-        //this might not work as expected
+        //might miss some links, but good enough
         while (domain->hasLinks() && !m_shouldStop) {
-            if (m_shouldStop) {
-                break; // Exit the loop
-            }
+            //if (m_shouldStop) {
+            //    break; // Exit the loop
+            //}
 
             //get next link
             auto [link, depth] = domain->getNextLink();
@@ -271,14 +271,20 @@ public:
                     std::cout << childLink << std::endl;
                     if (domain->canCrawl(child)) {
                         //should immediatelly return if same domain is visited??? maybe add another check , it doesnt stop
+                      
+                        //!!!!!!!!!!!!!!!!!!!!!!!!need one more condition to check if domain already has a thread running!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                         if (child.getDomain() != domainName) {
+                            json jsonData;
+							jsonData["message_type"] = "new_domain";
+							jsonData["parent_domain"] = domainName;
+							jsonData["child_domain"] = child.getDomain();
+							m_webSocket->sendText(jsonData.dump());
                             // submit crawling task to the thread pool for URLs from a new domain
                             m_pool.enqueue([this, child] { crawl(child); });
                         }
                         else {
-                         
 							json jsonData;
-							jsonData["messageType"] = "Crawled";
+							jsonData["message_type"] = "new_link";
 							jsonData["childLink"] = childLink;
 
 							// Convert JSON object to string
@@ -350,9 +356,15 @@ public:
         testset.clear();
     }
 
-
+    void setParams(bool _ignoreRobots, bool _domainsOnly) {
+		ignoreRobots = _ignoreRobots;
+		domainsOnly = _domainsOnly;
+    }
 
 private:
+    bool ignoreRobots = false;
+    bool domainsOnly = false;
+
     //always true for now, wanted to use to limit crawler to only domains, but not needed anymore
     bool should_crawl(const std::string& link) {
         return true;

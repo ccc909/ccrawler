@@ -6,3 +6,6 @@
 /.vs
 *.rar
 /.gitignore
+/.idea
+/cmake-build-debug
+/.gitignore

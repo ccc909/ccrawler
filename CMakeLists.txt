@@ -25,8 +25,8 @@ include(cpr)
 set(CMAKE_FOLDER "")
 
 add_executable(${PROJECT_NAME}
-    main.cpp
-    weblistener.cpp
+    
+    "src/main.cpp"
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

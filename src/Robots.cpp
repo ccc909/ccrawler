@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -18,14 +20,15 @@ constexpr const char* USERAGENT = "user-agent";
 constexpr const char* CRAWLDELAY = "crawl-delay";
 constexpr char DELIMITER = ':';
 constexpr const char* DESIRED_USERAGENT = "*";
+constexpr const char COMMENT = '#';
 
 namespace robots {
 	class Parser {
 	public:
 		Parser(const std::string& robotsTxtContent, const std::string& domain) : domain(domain) {
 			//initialize map
-			uaDirectiveMap["*"][DISALLOW] = {};
-			uaDirectiveMap["*"][ALLOW] = {};
+			uaDirectiveMap[DESIRED_USERAGENT][DISALLOW] = {};
+			uaDirectiveMap[DESIRED_USERAGENT][ALLOW] = {};
 			tokenizeInput(robotsTxtContent);
 		}
 
@@ -72,6 +75,7 @@ namespace robots {
 			return std::all_of(str.begin(), str.end(), [](char c) { return c <= 127 && c >= 0; });
 		}
 
+
 		void tokenizeInput(std::string robotsTxtContent) {
 			std::istringstream iss(std::move(robotsTxtContent));
 			std::string currentAgent = "*";
@@ -79,7 +83,7 @@ namespace robots {
 			for (std::string line; std::getline(iss, line);) {
 				// remove whitespace
 
-				if (line.empty() || line[0] == '#' || !isValidAscii(line)) {
+				if (line.empty() || line[0] == COMMENT || !isValidAscii(line)) {
 					continue; // sip empty, comment, or non-ASCII lines
 				}
 
@@ -98,7 +102,12 @@ namespace robots {
 				}
 				else if (key == DISALLOW || key == ALLOW) {
 					//store disallow/allow rules
-					uaDirectiveMap[currentAgent][key].push_back(std::regex(generateRegex(val))); // Store regex for each path
+					try {
+						uaDirectiveMap[currentAgent][key].push_back(std::regex(generateRegex(val))); // Store regex for each path
+					}
+					catch (std::exception e) {
+						std::cerr << "Wrong regex" << e.what() << std::endl;
+					}
 				}
 				else if (key == CRAWLDELAY) {
 					//store crawl delay

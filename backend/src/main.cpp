@@ -7,7 +7,7 @@ using json = nlohmann::json;
 int main() {
     ix::initNetSystem();
     int port = 9001;
-    std::string host("127.0.0.1");
+    std::string host("0.0.0.0");
     ix::WebSocketServer server(port, host, ix::SocketServer::kDefaultTcpBacklog, 1);
 
     std::optional<Crawler> crawler;

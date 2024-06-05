@@ -17,7 +17,7 @@ using json = nlohmann::json;
 
 class Crawler {
 public:
-    Crawler(ix::WebSocket* webSocket) : m_pool(std::thread::hardware_concurrency()), m_webSocket(webSocket) {}
+    Crawler(ix::WebSocket* webSocket) : m_pool(3), m_webSocket(webSocket) {}
 
     // Crawl function to be called by the websocket
     void crawl(const Link& startLink) {

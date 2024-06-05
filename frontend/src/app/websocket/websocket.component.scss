@@ -1,0 +1,155 @@
+.websocket-container {
+  display: flex;
+  flex-direction: column;
+  font-family: Arial, sans-serif;
+  background-color: #f7f7f7;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.search-input {
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  margin-right: 10px;
+  outline: none;
+  width: 300px;
+}
+
+
+.input-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.notifications {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+
+  .notification-card {
+    background-color: #0074D9;
+    color: #FFFFFF;
+    padding: 10px;
+    margin-bottom: 5px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    opacity: 1;
+    transition: opacity 0.5s ease-in-out;
+  }
+}
+
+
+.message-input {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  outline: none;
+}
+
+.send-button {
+  padding: 10px 20px;
+  font-size: 14px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.stop-button {
+  padding: 10px 20px;
+  font-size: 14px;
+  background-color: #af4c4c;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.restart-button {
+  padding: 10px 20px;
+  font-size: 14px;
+  background-color: #c3cf12;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cy-container {
+  width: 100%;
+  height: 600px;
+  border: 1px solid #ccc;
+}
+
+.stop-button:disabled {
+  background-color: #919b9e;
+  cursor: not-allowed;
+}
+
+.send-button:hover {
+  background-color: #45a049;
+}
+
+.messages-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.branch {
+  margin-bottom: 20px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+.branch h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+li {
+  position: relative;
+  padding: 5px 0;
+}
+
+li::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #ccc;
+}
+
+li:last-child::before {
+  height: 50%;
+}
+
+li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 10px;
+  height: 1px;
+  background-color: #ccc;
+}

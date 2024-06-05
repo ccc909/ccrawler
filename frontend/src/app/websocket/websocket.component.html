@@ -1,0 +1,31 @@
+<div class="websocket-container">
+  <div class="notifications">
+    <div *ngFor="let notification of notifications" class="notification-card">
+      {{ notification.message }}
+    </div>
+  </div>  
+  <div class="input-container">
+    <input type="text" [(ngModel)]="searchQuery" placeholder="Search branches..." class="search-input" (keyup)="filterBranches()">
+    <input type="text" [(ngModel)]="message" placeholder="Search for a domain e.g: youtube.com" class="message-input" (keyup.enter)="sendMessage()">
+    <button (click)="startCrawl()" class="send-button">Start</button>
+    <button (click)="stopCrawl()" class="stop-button" [disabled]="stopButtonDisabled == true">Stop</button>
+    <button (click)="clear()" class="restart-button">Clear</button>
+    <label><input type="checkbox" [(ngModel)]="domainsonly"> Domains Only</label>
+    <label><input type="checkbox" [(ngModel)]="ignorerobots"> Ignore Robots</label>
+  </div>
+  <div class="cy-container" #cy></div>
+  <div class="messages-container">
+    <div class="branch" *ngFor="let branch of filteredBranches">
+      <div class="branch-header" (click)="toggleBranch(branch)">
+        <h3>{{ branch.key }}</h3>
+        <button>{{ branch.value.expanded ? 'Collapse' : 'Expand' }}</button>
+      </div>
+      <ul *ngIf="branch.value.expanded">
+        <li *ngFor="let link of branch.value.messages">
+          <a [href]="link">{{ link }}</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div id="cy" style="width: 100%; height: 400px;"></div> <!-- Add a div for the graph -->
+</div>

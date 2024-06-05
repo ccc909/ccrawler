@@ -115,29 +115,46 @@ private:
         return true;
     }
 
+    bool isValidUrl(const std::string& url) {
+        // Check if the URL has a valid scheme (http or https)
+        std::regex urlRegex(R"((http|https)://([^\s/$.?#].[^\s]*)$)", std::regex::icase);
+        return std::regex_match(url, urlRegex);
+    }
+
+    std::string resolveRelativeUrl(const std::string& link, const std::string& baseUrl) {
+        if (link.find("http") == 0) {
+            return link;
+        }
+
+        // Handle the relative URL
+        std::string resolvedUrl = baseUrl;
+        if (!baseUrl.empty() && baseUrl.back() == '/' && link.front() == '/') {
+            resolvedUrl.pop_back();
+        }
+        return resolvedUrl + link;
+    }
+
     std::set<std::string> extractUrls(const std::string& html, const std::string& baseUrl) {
         std::set<std::string> links;
-        std::regex linkRegex("<a\\s+(?:[^>]*?\\s+)?href=([\"'])(.*?)\\1", std::regex::icase);
+        std::regex linkRegex(R"(<a\s+(?:[^>]*?\s+)?href=([\"'])(.*?)\1)", std::regex::icase);
         auto words_begin = std::sregex_iterator(html.begin(), html.end(), linkRegex);
         auto words_end = std::sregex_iterator();
+
         for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
             std::smatch match = *i;
             std::string link = match.str(2);
-            if (!link.empty() && link[0] != '#') {
-                if (link.find("http") != 0) {
-                    if (!baseUrl.empty() && baseUrl.back() == '/') {
-                        link = baseUrl.substr(0, baseUrl.length() - 1) + link;
+
+            if (!link.empty() && link[0] != '#' && link.find("javascript:") != 0 && link.find("mailto:") != 0) {
+                std::string resolvedLink = resolveRelativeUrl(link, baseUrl);
+                if (isValidUrl(resolvedLink)) {
+                    if (resolvedLink.back() == '/') {
+                        resolvedLink.pop_back();
                     }
-                    else {
-                        link = baseUrl + link;
-                    }
+                    links.insert(resolvedLink);
                 }
-                if (!link.empty() && link.back() == '/') {
-                    link.pop_back();
-                }
-                links.insert(link);
             }
         }
+
         return links;
     }
 

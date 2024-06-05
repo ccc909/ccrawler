@@ -74,13 +74,13 @@ int main() {
                 }
 
                 json stopstatus;
-                stopstatus["action"] = "stop_start";
+                stopstatus["message_type"] = "stop_start";
                 webSocket.sendText(stopstatus.dump());
                 crawler->stop();
-                stopstatus["action"] = "stop_end";
-                webSocket.sendText(stopstatus.dump());
                 crawler.reset();
                 crawler.emplace(&webSocket);
+                stopstatus["message_type"] = "stop_end";
+                webSocket.sendText(stopstatus.dump());
                 isStarted = false;
             }
         }

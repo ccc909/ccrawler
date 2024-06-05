@@ -1,4 +1,5 @@
 # About
+2nd year, 2nd semester project
 This is a polite C++ crawler with an UI made using angular.
 
 ![image](https://github.com/ccc909/ccrawler/assets/57506761/c0b49380-2974-4e6a-9a8d-40fa017ae62c)

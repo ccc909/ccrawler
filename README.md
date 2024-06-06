@@ -20,4 +20,8 @@ and run it using
 ```
 docker run -p 80:80 -p 9001:9001 -d ccc909/threadedcrawler
 ```
+or if built from source with
+```
+docker run -p 80:80 -p 9001:9001 -d crawler
+```
 The C++ crawler might crash and will not restart on its own, the image must be restarted manually if this happens.

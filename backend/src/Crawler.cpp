@@ -37,7 +37,7 @@ public:
 
             std::string fullLink = link.getFullLink();
 
-            if (visitedUrls.count(fullLink) != 0 || depth >= 10) {
+            if (visitedUrls.count(fullLink) != 0 || depth >= 3) {
                 continue;
             }
 
@@ -144,7 +144,7 @@ private:
             std::smatch match = *i;
             std::string link = match.str(2);
 
-            if (!link.empty() && link[0] != '#' && link.find("javascript:") != 0 && link.find("mailto:") != 0) {
+            if (!link.empty() && link[0] != '#' && link.find("javascript:") != 0 && link.find("mailto:") != 0 && link[0] != '+' && link[0] != '{') {
                 std::string resolvedLink = resolveRelativeUrl(link, baseUrl);
                 if (isValidUrl(resolvedLink)) {
                     if (resolvedLink.back() == '/') {
